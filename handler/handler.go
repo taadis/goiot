@@ -19,11 +19,16 @@ func OnConnectionLost(client mqtt.Client, err error) {
 }
 
 func MessagePublishHandler(client mqtt.Client, msg mqtt.Message) {
-	log.Printf("Received message: %s from topic:%s", msg.Payload(), msg.Topic())
+	log.Printf("Publishing message: %s from topic:%s", msg.Payload(), msg.Topic())
+}
+
+// 消息订阅回调
+func MessageSubscribeCallback(client mqtt.Client, message mqtt.Message) {
+	log.Printf("Subscribed to message id:%d and payload:%+v", message.MessageID(), message.Payload())
 }
 
 func Sub(client mqtt.Client) {
-	token := client.Subscribe(topic, 1, nil)
+	token := client.Subscribe(topic, 1, MessageSubscribeCallback)
 	token.Wait()
 	log.Printf("Subscribed to topic %s", topic)
 }
