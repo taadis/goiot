@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	influxdb "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/taadis/goiot/model"
 )
 
@@ -35,6 +37,9 @@ func MessageSubscribeCallback(client mqtt.Client, message mqtt.Message) {
 	}
 
 	log.Printf("Subscribed to message id:%d and payload:%+v", message.MessageID(), data)
+
+	// write to influxdb
+	writeToInflux(&data)
 }
 
 func Sub(client mqtt.Client) {
@@ -54,6 +59,7 @@ func Publish(client mqtt.Client) {
 	for i := 0; i < num; i++ {
 		data := &model.Model{}
 		data.IDnum = int64(i)
+		data.MachineSN = fmt.Sprintf("SN%d", i)
 		data.MachineIP = fmt.Sprintf("127.0.0.%d", i)
 		payload, err := json.Marshal(data)
 		if err != nil {
@@ -64,4 +70,39 @@ func Publish(client mqtt.Client) {
 		token.Wait()
 		time.Sleep(time.Second)
 	}
+}
+
+func connInflux() influxdb.Client {
+	server := "http://localhost:8086"
+	authToken := "dev-token"
+	client := influxdb.NewClient(server, authToken)
+	_, err := client.Ping(context.Background())
+	if err != nil {
+		log.Printf("influxdb ping error:%+v", err)
+	}
+
+	return client
+}
+
+func writeToInflux(data *model.Model) error {
+	client := connInflux()
+	defer client.Close()
+
+	org := "taadis"
+	bucket := "my-bucket"
+	writeAPI := client.WriteAPIBlocking(org, bucket)
+
+	point := influxdb.NewPoint("machine_info",
+		map[string]string{"machine_sn": data.MachineSN},
+		map[string]interface{}{"id_num": data.IDnum, "machine_ip": data.MachineIP},
+		time.Now(),
+	)
+	// write point immediately
+	err := writeAPI.WritePoint(context.Background(), point)
+	if err != nil {
+		log.Printf("influxdb write point error:%+v", err)
+		return err
+	}
+	log.Printf("influxdb write point success")
+	return nil
 }
